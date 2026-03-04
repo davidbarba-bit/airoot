@@ -1,0 +1,243 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  CONTRIBUTOR
+}
+
+enum ProjectStatus {
+  DEVELOPMENT
+  PRODUCTION
+  PAUSED
+  DEPRECATED
+}
+
+enum ImpactType {
+  COST_REDUCTION
+  REVENUE_INCREASE
+  CUSTOMER_EXPERIENCE
+  INTERNAL_EFFICIENCY
+  OTHER
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  FILE
+}
+
+enum ReactionTarget {
+  PROJECT
+  COMMENT
+}
+
+enum ActivityAction {
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  PROJECT_STATUS_CHANGED
+  COMMENT_ADDED
+  FILE_UPLOADED
+  REACTION_ADDED
+  CONTRIBUTOR_ADDED
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String
+  avatarUrl   String?
+  role        Role     @default(CONTRIBUTOR)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  lastLoginAt DateTime?
+
+  ownedProjects      Project[]             @relation("ProjectOwner")
+  contributedProjects ProjectContributor[]
+  comments           Comment[]
+  reactions          Reaction[]
+  activityLog        ActivityLog[]
+  uploadedMedia      ProjectMedia[]
+
+  @@map("users")
+}
+
+model Department {
+  id       String    @id @default(cuid())
+  name     String    @unique
+  color    String    @default("#3B82F6")
+  projects Project[]
+
+  @@map("departments")
+}
+
+model Tool {
+  id       String         @id @default(cuid())
+  name     String         @unique
+  category String?
+  iconUrl  String?
+  projects ProjectTool[]
+
+  @@map("tools")
+}
+
+model Project {
+  id                    String        @id @default(cuid())
+  title                 String
+  shortDescription      String
+  description           String        @db.Text
+  departmentId          String
+  status                ProjectStatus @default(DEVELOPMENT)
+  ownerId               String
+  slackChannel          String?
+  repoUrl               String?
+  deploymentPlatform    String?
+  impactType            ImpactType?
+  impactDescription     String?
+  impactQuantification  String?
+  isFeatured            Boolean       @default(false)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  department   Department           @relation(fields: [departmentId], references: [id])
+  owner        User                 @relation("ProjectOwner", fields: [ownerId], references: [id])
+  tools        ProjectTool[]
+  contributors ProjectContributor[]
+  media        ProjectMedia[]
+  tags         ProjectTag[]
+  comments     Comment[]
+  reactions    Reaction[]           @relation("ProjectReactions")
+  activityLog  ActivityLog[]
+  embedding    ProjectEmbedding?
+
+  @@map("projects")
+}
+
+model ProjectTool {
+  projectId String
+  toolId    String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tool      Tool    @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, toolId])
+  @@map("project_tools")
+}
+
+model ProjectContributor {
+  projectId String
+  userId    String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@map("project_contributors")
+}
+
+model ProjectMedia {
+  id         String    @id @default(cuid())
+  projectId  String
+  type       MediaType
+  url        String
+  filename   String
+  fileSize   Int?
+  uploadedBy String
+  createdAt  DateTime  @default(now())
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploader   User    @relation(fields: [uploadedBy], references: [id])
+
+  @@map("project_media")
+}
+
+model ProjectTag {
+  projectId String
+  tag       String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, tag])
+  @@map("project_tags")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  projectId String
+  authorId  String
+  content   String   @db.Text
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author   User       @relation(fields: [authorId], references: [id])
+  parent   Comment?   @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  Comment[]  @relation("CommentReplies")
+  reactions Reaction[] @relation("CommentReactions")
+
+  @@map("comments")
+}
+
+model Reaction {
+  id         String         @id @default(cuid())
+  targetType ReactionTarget
+  targetId   String
+  userId     String
+  emoji      String
+  createdAt  DateTime       @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation("ProjectReactions", fields: [targetId], references: [id], onDelete: Cascade, map: "reaction_project_fk")
+  comment Comment? @relation("CommentReactions", fields: [targetId], references: [id], onDelete: Cascade, map: "reaction_comment_fk")
+
+  @@unique([targetType, targetId, userId, emoji])
+  @@map("reactions")
+}
+
+model ActivityLog {
+  id        String         @id @default(cuid())
+  projectId String
+  userId    String
+  action    ActivityAction
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@map("activity_log")
+}
+
+model ProjectEmbedding {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  embedding Float[]
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("ai_embeddings")
+}
+
+model AriaConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  messages  Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("aria_conversations")
+}
+
+model AppSettings {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}

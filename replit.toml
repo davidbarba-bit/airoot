@@ -1,0 +1,9 @@
+[run]
+command = "npm run start"
+
+[deployment]
+build = ["sh", "-c", "cd client && npm install && npm run build && cd ../server && npm install && npx prisma generate && npx prisma db push && node prisma/seed.js"]
+run = ["sh", "-c", "cd server && node src/index.js"]
+
+[env]
+NODE_ENV = "production"
