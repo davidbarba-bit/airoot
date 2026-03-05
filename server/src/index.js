@@ -5,7 +5,6 @@ const helmet = require('helmet');
 const compression = require('compression');
 const session = require('express-session');
 const passport = require('passport');
-const path = require('path');
 
 require('./config/passport');
 
@@ -17,8 +16,22 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 app.use(compression());
+
+// CORS: allow localhost (dev) + Vercel domain (prod)
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL] : []),
+];
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile, curl, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow any *.vercel.app subdomain for preview deployments
+    if (/\.vercel\.app$/.test(origin)) return callback(null, true);
+    callback(new Error(`CORS bloqueado para origen: ${origin}`));
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
@@ -40,6 +53,9 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Health check (Railway lo usa para saber que el servicio está vivo)
+app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/projects', require('./routes/projects'));
@@ -51,14 +67,6 @@ app.use('/api/users', require('./routes/users'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/aria', require('./routes/aria'));
 app.use('/api/upload', require('./routes/upload'));
-
-// Serve frontend in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../../client/dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
-  });
-}
 
 // Error handler
 app.use((err, req, res, next) => {
