@@ -7,7 +7,8 @@ export default function LoginPage() {
   const error = params.get('error');
 
   const handleLogin = () => {
-    window.location.href = '/api/auth/google';
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    window.location.href = `${apiBase}/api/auth/google`;
   };
 
   return (
